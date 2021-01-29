@@ -1,0 +1,110 @@
+import numpy as np 
+import pandas as pd 
+
+# To consume Twitter's API
+import tweepy
+from tweepy import OAuthHandler 
+
+
+
+# keys and tokens from the Twitter Dev Console
+consumer_key = 'Sec3MvclRIx2RVlgu9l0SJX6D'
+consumer_secret = 'ayoPNWtBm7fWpMBoK6EwRmegu3SW8Rw9mzJkottkv97quPe941'
+access_token = '736550752760406018-so5CPJrEbJKb3c3Pq8va3VFr0yk4S0E'
+access_token_secret = 'Cgr8tz0h6FTU7kxAjDzpHnjffNTHxWsBytXnu4Ihd1TFb'
+
+class TwitterClient(object): 
+    def __init__(self): 
+        #Initialization method. 
+        try: 
+            # create OAuthHandler object 
+            auth = OAuthHandler(consumer_key, consumer_secret) 
+            # set access token and secret 
+            auth.set_access_token(access_token, access_token_secret) 
+            # create tweepy API object to fetch tweets 
+            # add hyper parameter 'proxy' if executing from behind proxy "proxy='http://172.22.218.218:8085'"
+            self.api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
+            
+        except tweepy.TweepError as e:
+            print(f"Error: Tweeter Authentication Failed - \n{str(e)}")
+
+    def get_tweets(self, query, maxTweets = 1000):
+        #Function to fetch tweets. 
+        # empty list to store parsed tweets 
+        tweets = [] 
+        sinceId = None
+        max_id = -1
+        tweetCount = 0
+        tweetsPerQry = 100
+
+        while tweetCount < maxTweets:
+            try:
+                if (max_id <= 0):
+                    if (not sinceId):
+                        new_tweets = self.api.search(q=query, count=tweetsPerQry)
+                    else:
+                        new_tweets = self.api.search(q=query, count=tweetsPerQry,
+                                                since_id=sinceId)
+                else:
+                    if (not sinceId):
+                        new_tweets = self.api.search(q=query, count=tweetsPerQry,
+                                                max_id=str(max_id - 1))
+                    else:
+                        new_tweets = self.api.search(q=query, count=tweetsPerQry,
+                                                max_id=str(max_id - 1),
+                                                since_id=sinceId)
+                if not new_tweets:
+                    print("No more tweets found")
+                    break
+
+                for tweet in new_tweets:
+                    parsed_tweet = {} 
+                    parsed_tweet['tweets'] = tweet.text 
+
+                    # appending parsed tweet to tweets list 
+                    if tweet.retweet_count > 0: 
+                        # if tweet has retweets, ensure that it is appended only once 
+                        if parsed_tweet not in tweets: 
+                            tweets.append(parsed_tweet) 
+                    else: 
+                        tweets.append(parsed_tweet) 
+                        
+                tweetCount += len(new_tweets)
+                print("Downloaded {0} tweets".format(tweetCount))
+                max_id = new_tweets[-1].id
+
+            except tweepy.TweepError as e:
+                # Just exit if any error
+                print("Tweepy error : " + str(e))
+                break
+        
+        return pd.DataFrame(tweets)
+
+
+twitter_client = TwitterClient()
+
+# calling function to get tweets
+tweets_df = twitter_client.get_tweets('Trending India', maxTweets=100)
+print(f'tweets_df Shape - {tweets_df.shape}')
+tweets_df.head(10)
+
+
+twitter_client = TwitterClient()
+
+# calling function to get tweets
+tweets_df = twitter_client.get_tweets('#JoeBiden', maxTweets=100)
+print(f'tweets_df Shape - {tweets_df.shape}')
+tweets_df.head(10)
+
+def fetch_sentiment_using_SIA(text):
+    sid = SentimentIntensityAnalyzer()
+    polarity_scores = sid.polarity_scores(text)
+    return 'neg' if polarity_scores['neg'] > polarity_scores['pos'] else 'pos'
+
+
+sentiments_using_SIA = tweets_df.tweets.apply(lambda tweet: fetch_sentiment_using_SIA(tweet))
+pd.DataFrame(sentiments_using_SIA.value_counts())
+
+
+
+
